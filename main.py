@@ -67,7 +67,7 @@ if __name__ == '__main__':
     if args.pretrained == 0:
         logger = datafree.utils.logger.get_logger(log_name, output='pretraineds/log-%s-iid[%d]-%s.txt'%(args.dataset, args.iid, args.model))
     else:
-        logger = datafree.utils.logger.get_logger(log_name, output='checkpoints/log-%s-iid[%d]-%s.txt'%(args.dataset, args.iid, args.model))
+        logger = datafree.utils.logger.get_logger(log_name, output='results/log-%s-iid[%d]-%s.txt'%(args.dataset, args.iid, args.model))
 
 
     # load dataset and user groups     数据集的获取以及划分？
@@ -184,10 +184,13 @@ if __name__ == '__main__':
     global_weights = global_model.state_dict()
 
     # Training
-    train_loss, train_accuracy = [], []
     max_acc_global = 0.
     print('#########################################################################################')
     logger.info('Start Fast Data Free Distillation.')
+    global_test_acc, global_test_loss = [], []
+    local_valid_acc = {}
+    for i in range(args.num_users):
+        local_valid_acc[i] = []
     for epoch in tqdm(range(args.comm_rounds)):  # 通讯轮数 50
         local_weights = []
 
@@ -197,9 +200,9 @@ if __name__ == '__main__':
             local_model = FastDateFree(args=args, dataset=test_dataset,
                                       idxs=user_groups_test[idx])  # , logger=logger
             # update student model's weight first
-            w = local_model.distillation(  # 在这里实现蒸馏
+            w, local_acc = local_model.distillation(  # 在这里实现蒸馏
                 student=copy.deepcopy(global_model), synthesizer=synthesizer[idx], teacher=Pretrained_Models[idx], global_round=epoch, client=idx, logger=logger)
-        
+            local_valid_acc[idx].append(local_acc)
             # record local model
             local_weights.append(copy.deepcopy(w))  # 统计各client的local model参数
 
@@ -211,6 +214,8 @@ if __name__ == '__main__':
         # 每个comm后会测试global model的acc
         if epoch >= args.warmup:  # 每过1个epoch, 测试global model在整个dataset上的性能
             acc_global, loss_global = test_inference(args, global_model, test_dataset, idxs=[i for i in range(len(test_dataset))])
+            global_test_acc.append(acc_global)
+            global_test_loss.append(loss_global)
             logger.info('| Global Model Testing Stage | Communication Round : {} | Global Test Acc : {}   Test Loss : {}'.format(
                     epoch+1, acc_global, loss_global))
 
@@ -224,9 +229,33 @@ if __name__ == '__main__':
             torch.save(checkpoint, model_path)
             if acc_global >= max_acc_global:
                 max_acc_global = copy.deepcopy(acc_global)
-                result_path3 = os.path.join('results/Global_VGG_%s_%s_iid[%d]_epoch[%d].pth.tar'%(args.dataset, args.pretrained_epochs, args.iid, epoch+1)) 
+                result_path3 = os.path.join('results/Best_Global_VGG_%s_pretrained[%s]_iid[%d].pth.tar'%(args.dataset, args.pretrained_epochs, args.iid)) 
                 torch.save(checkpoint, result_path3)
-                
+            # draw curve
+            if (epoch+1) % 5 == 0: # 每5个comm round 重新画一遍
+                # Plot Global Test Acc Curve
+                plt.figure()
+                plt.title('Global Model Test Acc vs Communication rounds')
+                plt.plot(range(len(global_test_acc)), global_test_acc, color='r')
+                plt.ylabel('Global Model Test Acc')
+                plt.xlabel('Communication Rounds')
+                plt.savefig(os.path.join('figure/Global_TestAcc_%s_iid[%d].png'%(args.dataset, args.iid)) )
+                # Plot Global Test Loss Curve
+                plt.figure()
+                plt.title('Global Model Test Loss vs Communication rounds')
+                plt.plot(range(len(global_test_loss)), global_test_loss, color='b')
+                plt.ylabel('Global Model Test Loss')
+                plt.xlabel('Communication Rounds')
+                plt.savefig(os.path.join('figure/Global_TestLoss_%s_iid[%d].png'%(args.dataset, args.iid)) )
+
+                # Plot Local Vaild Acc Curve
+                for idx in range(args.num_users):
+                    plt.figure()
+                    plt.title('Local Model Valid Acc vs Communication rounds')
+                    plt.plot(range(len(local_valid_acc[idx])), local_valid_acc[idx], color='b')
+                    plt.ylabel('Local Model[%d] Valid Acc'%(idx))
+                    plt.xlabel('Communication Rounds')
+                    plt.savefig(os.path.join('figure/Local_VaildAcc_%s_iid[%d]_idx[%d].png'%(args.dataset, args.iid, idx)))
     print('\n Total Run Time: {0:0.4f}'.format(time.time()-start_time))
 
     # PLOTTING (optional)

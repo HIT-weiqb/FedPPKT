@@ -96,7 +96,7 @@ def args_parser():
                     help='number of iterations for KD after generation')
     parser.add_argument('--ep_steps', default=200, type=int, metavar='N',
                         help='number of total iterations in each epoch')
-    parser.add_argument('--warmup', default=2, type=int, metavar='N',
+    parser.add_argument('--warmup', default=3, type=int, metavar='N',  # 这里需不需要warmup? 需要多一点还是少一点？
                         help='which epoch to start kd')
     parser.add_argument('--batch_size', default=256, type=int,
                     metavar='N',

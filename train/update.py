@@ -132,6 +132,7 @@ class FastDateFree(object):
         
         list_test_acc = []
         list_test_loss = []
+        acc = 0.
         for epoch in range(self.args.epoch):  #  epoch 10
             for _ in range( self.args.ep_steps//self.args.kd_steps ): # total kd_steps < ep_steps
                 # update student model's weight
@@ -177,6 +178,7 @@ class FastDateFree(object):
                 test_acc, test_loss = self.inference(student)
                 list_test_acc.append(round(test_acc, 2))
                 list_test_loss.append(round(test_loss, 2))
+                acc = copy.deepcopy(test_acc)
                 logger.info('| Local Model Testing Stage | Communication Round : {} |  Client Idx : {} | Local Epoch : {} | Student Model Test Acc : {:.4f}   Test Loss : {:.4f}'.format(
                         global_round, client, epoch+1, test_acc, test_loss))  # 每个local epoch后的local acc
 
@@ -229,7 +231,7 @@ class FastDateFree(object):
         # plt.savefig(os.path.join('{}/figure'.format(path_project),'TestAcc_{}_iid[{}]_student[{}]_teacher[{}]'.format(
         #                                             self.args.dataset, self.args.iid, self.args.model, MODEL_NAMES[client])))
         
-        return student.state_dict()
+        return student.state_dict(), acc
 
     def inference(self, model):
         """ Returns the inference accuracy and loss.
