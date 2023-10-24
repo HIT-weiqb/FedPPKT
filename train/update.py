@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional as F
 import os
 import copy
+import random
 import datafree
 
 class DatasetSplit(Dataset):
@@ -25,18 +26,15 @@ class DatasetSplit(Dataset):
         image, label = self.dataset[self.idxs[item]]
         return torch.tensor(image), torch.tensor(label)
 
-
-class PreTrained(object):
-    def __init__(self, args, dataset, idxs, optimizer, scheduler, logger):  # , logger
+class LocalUpdate(object):
+    def __init__(self, args, dataset, idxs, logger):
         self.args = args
         self.logger = logger
         self.trainloader, self.validloader, self.testloader = self.train_val_test(
             dataset, list(idxs))
         self.device = 'cuda' if args.gpu else 'cpu'
-        # Default criterion set to CrossEntropy Loss Function
+        # Default criterion set to NLL loss function
         self.criterion = nn.CrossEntropyLoss().to(self.device) 
-        self.optimizer = optimizer
-        self.scheduler = scheduler
 
     def train_val_test(self, dataset, idxs):
         """
@@ -44,17 +42,108 @@ class PreTrained(object):
         and user indexes.
         """
         # split indexes for train, validation, and test (80, 10, 10)
+        random.shuffle(idxs)
         idxs_train = idxs[:int(0.8*len(idxs))]
         idxs_val = idxs[int(0.8*len(idxs)):int(0.9*len(idxs))]
         idxs_test = idxs[int(0.9*len(idxs)):]
 
         trainloader = DataLoader(DatasetSplit(dataset, idxs_train),
-                                 batch_size=self.args.pretrained_bs, shuffle=True)
+                                 batch_size=self.args.local_bs, shuffle=True)
         validloader = DataLoader(DatasetSplit(dataset, idxs_val),
                                  batch_size=int(len(idxs_val)/10), shuffle=False)
         testloader = DataLoader(DatasetSplit(dataset, idxs_test),
                                 batch_size=int(len(idxs_test)/10), shuffle=False)
         return trainloader, validloader, testloader
+
+    def inference(self, model):
+        """ Returns the inference accuracy and loss.
+        """
+
+        model.eval()
+        loss, total, correct = 0.0, 0.0, 0.0
+
+        for batch_idx, (images, labels) in enumerate(self.testloader):
+            images, labels = images.to(self.device), labels.to(self.device)
+
+            # Inference
+            outputs = model(images)
+            batch_loss = self.criterion(outputs, labels)
+            loss += batch_loss.item()
+
+            # Prediction
+            _, pred_labels = torch.max(outputs, 1)
+            pred_labels = pred_labels.view(-1)
+            correct += torch.sum(torch.eq(pred_labels, labels)).item()
+            total += len(labels)
+
+        accuracy = correct/total
+        return accuracy, loss
+    
+    def update_weights(self, model, global_round, client, round):
+        # Set mode to train model
+        model.train()
+        epoch_loss = []
+
+        # Set optimizer for the local updates
+        if self.args.optimizer == 'sgd':
+            optimizer = torch.optim.SGD(model.parameters(), lr=self.args.baseline_lr,
+                                        momentum=0.5)
+        elif self.args.optimizer == 'adam':
+            optimizer = torch.optim.Adam(model.parameters(), lr=self.args.baseline_lr,
+                                         weight_decay=1e-4)
+
+        for iter in range(self.args.local_ep):
+            batch_loss = []
+            for batch_idx, (images, labels) in enumerate(self.trainloader):
+                images, labels = images.to(self.device), labels.to(self.device)
+
+                model.zero_grad()
+                log_probs = model(images)
+                loss = self.criterion(log_probs, labels)
+                loss.backward()
+                optimizer.step()
+
+                if self.args.verbose and (batch_idx % 50 == 0):
+                    print('| Global Round : {} | Client Idx : {} | Local Epoch : {} | [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                        global_round, client, iter, batch_idx * len(images),
+                        len(self.trainloader.dataset),
+                        100. * batch_idx / len(self.trainloader), loss.item()))
+                # self.logger.add_scalar('loss', loss.item())
+                batch_loss.append(loss.item())
+            epoch_loss.append(sum(batch_loss)/len(batch_loss))
+        # 本地测试下
+        acc, loss = self.inference(model=model)
+        self.logger.info('[Eval] Round={round} Client Idx={idx} Acc={acc:.2f} Loss={loss:.2f}'.format(
+                        round=round+1, idx=client,  acc=acc, loss=loss))
+        return model.state_dict(), sum(epoch_loss) / len(epoch_loss)
+    
+
+class PreTrained(object):
+    def __init__(self, args, dataset, test_dataset, idxs, test_idx, optimizer, scheduler, logger):  # , logger
+        self.args = args
+        self.logger = logger
+        self.test_dataset = test_dataset
+        self.trainloader, self.testloader = self.train_val_test(
+            dataset, list(idxs), test_dataset, list(test_idx))
+        self.device = 'cuda' if args.gpu else 'cpu'
+        # Default criterion set to CrossEntropy Loss Function
+        self.criterion = nn.CrossEntropyLoss().to(self.device) 
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+
+    def train_val_test(self, dataset, idxs, test_dataset, test_idxs):
+        """
+        Returns train, validation and test dataloaders for a given dataset
+        and user indexes.
+        """
+        # split indexes for train and test (80, 20)
+        random.shuffle(idxs)
+
+        trainloader = DataLoader(DatasetSplit(dataset, idxs),
+                                 batch_size=self.args.pretrained_bs, shuffle=True)
+        testloader = DataLoader(DatasetSplit(test_dataset, test_idxs),
+                                batch_size=int(len(test_idxs)/10), shuffle=False)
+        return trainloader, testloader
 
     def update_weights(self, model, global_round, idx):
         # Set mode to train model
@@ -73,10 +162,10 @@ class PreTrained(object):
             loss.backward()
             self.optimizer.step()
 
-            if self.args.verbose and ((batch_idx+1) % 25 == 0):  # training loss
-                print('| Client Idx : {} | Pretraining Round : {} | [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                    idx, global_round, (batch_idx+1) * len(images), len(self.trainloader.dataset),
-                    100. * batch_idx / len(self.trainloader), loss.item()))
+            # if self.args.verbose and ((batch_idx+1) % 25 == 0):  # training loss
+            #     print('| Client Idx : {} | Pretraining Round : {} | [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            #         idx, global_round, (batch_idx+1) * len(images), len(self.trainloader.dataset),
+            #         100. * batch_idx / len(self.trainloader), loss.item()))
 
             # self.logger.add_scalar('loss', loss.item())
             batch_loss.append(loss.item())  # 记录每个batch的loss
@@ -134,7 +223,7 @@ class FastDateFree(object):
         list_test_loss = []
         acc = 0.
         for epoch in range(self.args.epoch):  #  epoch 10
-            for _ in range( self.args.ep_steps//self.args.kd_steps ): # total kd_steps < ep_steps
+            for bt in range( self.args.ep_steps//self.args.kd_steps ): # total kd_steps < ep_steps  1000/200 = 5 ,  这个循环似乎不该写，因为这样跑多了 去了试试*
                 # update student model's weight
                 synthesizer.update_student(copy.deepcopy(student.state_dict()))
                 # g_steps, generate fake data
@@ -146,8 +235,8 @@ class FastDateFree(object):
                     teacher.eval()
 
                     batch_loss = []
-                    for i in range(self.args.kd_steps):  # distillation rounds 400 batch
-                        images = synthesizer.sample()  # get data iterator(per batch
+                    for i in range(self.args.kd_steps):  # distillation rounds 200 batch
+                        images = synthesizer.sample()  #随机取一个batch的数据
                         if self.args.gpu is not None:
                             images = images.cuda(self.args.gpu, non_blocking=True)
                         with self.args.autocast():
@@ -161,12 +250,10 @@ class FastDateFree(object):
                         optimizer.step()
 
                         if i%50==0:
-                            # print('| Global Round : {} | Client Idx : {} | Local Epoch : {}/{} ({:.0f}%)]\t| S_Loss: {:.6f}   G_LOSS:{:.6f}'.format(
-                            #     global_round, client, iter+1, self.args.local_ep,
-                            #     100. * iter / self.args.local_ep, sum(batch_loss)/len(batch_loss), G_loss))
+                            # 这里的i 和 args.kd_steps也得改 改成跟上一个循环有关的，以及ep_steps
                             print('| Communication Round : {} |  Client Idx : {} | Local Epoch : {} | Local Batch : {}/{} ({:.0f}%)]\t| Loss: {:.6f} '.format(
-                                global_round, client, epoch, i, self.args.kd_steps,
-                                100. * i / self.args.kd_steps, sum(batch_loss)/len(batch_loss)))
+                                global_round, client, epoch, i+bt*self.args.kd_steps, self.args.ep_steps,
+                                100. * (i+bt*self.args.kd_steps) / self.args.ep_steps, sum(batch_loss)/len(batch_loss)))
                     scheduler.step()
                 # every new data
                 for vis_name, vis_image in vis_results.items():
@@ -193,43 +280,6 @@ class FastDateFree(object):
                         self.args.dataset, self.args.iid, client, MODEL_NAMES[client]))
                     torch.save(checkpoint, result_path)
 
-        # PLOTTING (optional)
-        # import matplotlib
-        # import matplotlib.pyplot as plt
-        # matplotlib.use('Agg')
-        # # Plot Training Loss curve
-        # plt.figure()
-        # plt.title('Training Loss vs Communication rounds')
-        # plt.plot(range(len(training_loss)), training_loss, color='b')
-        # plt.ylabel('Training loss')
-        # plt.xlabel('Communication Rounds')
-        # plt.savefig(os.path.join('{}/figure'.format(path_project),'TrainingLoss_{}_iid[{}]_student[{}]_teacher[{}]'.format(
-        #                                                     self.args.dataset, self.args.iid, self.args.model, MODEL_NAMES[client])))
-        
-        # # Plot Test loss vs Communication rounds
-        # plt.figure()
-        # plt.title('Test loss  vs Communication rounds')
-        # x_idx = [i for i in range(len(list_test_loss))]
-        # for i in range(len(x_idx)):
-        #     x_idx[i] = x_idx[i] * 50
-        # plt.plot(x_idx, list_test_loss, color='r')
-        # plt.ylabel('Test loss')
-        # plt.xlabel('Communication Rounds')
-        # plt.savefig(os.path.join('{}/figure'.format(path_project),'TestLoss_{}_iid[{}]_student[{}]_teacher[{}]'.format(
-        #                                             self.args.dataset, self.args.iid, self.args.model, MODEL_NAMES[client])))
-
-
-        # # Plot Test Acc vs Communication rounds
-        # plt.figure()
-        # plt.title('Test acc  vs Communication rounds')
-        # x2_idx = [i for i in range(len(list_test_acc))]
-        # for i in range(len(x2_idx)):
-        #     x2_idx[i] = x2_idx[i] * 50
-        # plt.plot(x2_idx, list_test_acc, color='r')
-        # plt.ylabel('Test acc')
-        # plt.xlabel('Communication Rounds')
-        # plt.savefig(os.path.join('{}/figure'.format(path_project),'TestAcc_{}_iid[{}]_student[{}]_teacher[{}]'.format(
-        #                                             self.args.dataset, self.args.iid, self.args.model, MODEL_NAMES[client])))
         
         return student.state_dict(), acc
 

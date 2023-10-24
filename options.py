@@ -13,16 +13,18 @@ def args_parser():
     parser.add_argument('--pretrained_epochs', type=int, default=200,
                         help="number of rounds of training")
     parser.add_argument('--pretrained_lr', type=float, default=0.05,
-                        help='learning rate')
+                        help='learning rate')  # 0.01  batch size=10
     parser.add_argument('--pretrained_bs', type=int, default=32, help="batch size of pretraining")
-    parser.add_argument('--pretrained_momentum', type=float, default=0.9,
-                        help='SGD momentum (default: 0.9)')
+    parser.add_argument('--pretrained_momentum', type=float, default=0.9,  
+                        help='SGD momentum (default: 0.9)')  # 0.5 
     parser.add_argument('--pretrained_optimizer', type=str, default='sgd', help="type \
                     of optimizer")
     parser.add_argument('--lr_decay_milestones', default="120,150,180", type=str,
                     help='milestones for learning rate decay')
+    parser.add_argument('--beta', type=float, default=0.5, help="Dirichlet distribution parameter")
 
     # model arguments
+    parser.add_argument('--alg', type=str, default='FedFast', help='algorithm, baseline or FedFast')
     parser.add_argument('--model', type=str, default='VGG8', help='model name')
     # parser.add_argument('--kernel_num', type=int, default=9,
     #                     help='number of each kind of kernel')
@@ -42,7 +44,8 @@ def args_parser():
     
 
     # Basic
-    parser.add_argument('--gpu_id', type=int, default=7, help="GPU id,-1 for CPU")
+    parser.add_argument('--gpu', default=1, help="To use cuda, set \
+                        to a specific GPU ID. Default set to use CPU.")
     parser.add_argument('--data_root', default='./data')
     parser.add_argument('--log_tag', default='cifar10')
     parser.add_argument('--lr', default=0.2, type=float,
@@ -53,9 +56,8 @@ def args_parser():
 
     parser.add_argument('--num_classes', type=int, default=10, help="number \
                         of classes")
-    parser.add_argument('--num_shards', type=int, default=2, help="number of each clients' shard")
-    parser.add_argument('--gpu', default=7, help="To use cuda, set \
-                        to a specific GPU ID. Default set to use CPU.")
+    parser.add_argument('--num_shards', type=int, default=5, help="number of each clients' shard")
+
 
     parser.add_argument('--iid', type=int, default=1,  
                         help='Default set to IID. Set to 0 for non-IID.')
@@ -65,14 +67,14 @@ def args_parser():
     parser.add_argument('--verbose', type=int, default=1, help='verbose')
 
     # Fast Data Free 
-    parser.add_argument('--epoch', type=int, default=10, help="number of epoch")
+    parser.add_argument('--epoch', type=int, default=10, help="number of local training epoch")
     parser.add_argument('--num_users', type=int, default=10,
                         help="number of users: K")
     parser.add_argument('--frac', type=float, default=1,
                         help='the fraction of clients: C')
-    parser.add_argument('--comm_rounds', type=int, default=50,  #   200   50    1
+    parser.add_argument('--comm_rounds', type=int, default=50,  
                         help="number of rounds of training")
-    parser.add_argument('--seed', type=int, default=3, metavar='S',
+    parser.add_argument('--seed', type=int, default=7, metavar='S',
                         help='random seed (default: 3)')
     parser.add_argument('--adv', default=1.1, type=float, help='scaling factor for adversarial distillation')
     parser.add_argument('--bn', default=10.0, type=float, help='scaling factor for BN regularization')
@@ -94,9 +96,9 @@ def args_parser():
                         help='meta gradient: is maml or reptile')
     parser.add_argument('--kd_steps', default=200, type=int, metavar='N',
                     help='number of iterations for KD after generation')
-    parser.add_argument('--ep_steps', default=200, type=int, metavar='N',
+    parser.add_argument('--ep_steps', default=200, type=int, metavar='N',  # 到底是200还是400？
                         help='number of total iterations in each epoch')
-    parser.add_argument('--warmup', default=3, type=int, metavar='N',  # 这里需不需要warmup? 需要多一点还是少一点？
+    parser.add_argument('--warmup', default=3, type=int, metavar='N',  # 
                         help='which epoch to start kd')
     parser.add_argument('--batch_size', default=256, type=int,
                     metavar='N',
@@ -115,5 +117,17 @@ def args_parser():
                     dest='weight_decay')
     parser.add_argument('-p', '--print_freq', default=0, type=int,
                     metavar='N', help='print frequency (default: 10)')
+
+     # Baseline
+    parser.add_argument('--local_ep', type=int, default=10,
+                        help="the number of local epochs: E")
+    parser.add_argument('--local_bs', type=int, default=32,
+                        help="local batch size: B")
+    parser.add_argument('--baseline_lr', type=float, default=0.02,
+                        help='learning rate')
+    parser.add_argument('--baseline_momentum', type=float, default=0.7,
+                        help='SGD momentum (default: 0.5)')
+    parser.add_argument('--optimizer', type=str, default='sgd', help="type \
+                        of optimizer")
     args = parser.parse_args()
     return args

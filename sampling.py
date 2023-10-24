@@ -171,42 +171,94 @@ def cifar_noniid(dataset, test_dataset, args):
     :param num_users:
     :return:
     """
-    num_shards = args.num_shards * args.num_users
-    num_imgs = int(len(dataset) / num_shards)
-    num_imgs_test = int(len(test_dataset) / num_shards)  # 一共10个client 每个client 分2个shard 
-    idx_shard = [i for i in range(num_shards)]
-    # idx_shard_test = [i for i in range(num_shards)]
+    # num_shards = args.num_shards * args.num_users
+    # num_imgs = int(len(dataset) / num_shards)
+    # num_imgs_test = int(len(test_dataset) / num_shards)  # 一共10个client 每个client 分5个shard 
+    # idx_shard = [i for i in range(num_shards)]
+    # # idx_shard_test = [i for i in range(num_shards)]
 
+    # dict_users = {i: np.array([], dtype=int) for i in range(args.num_users)}
+    # dict_users_test = {i: np.array([], dtype=int) for i in range(args.num_users)}
+    # idxs = np.arange(len(dataset))
+    # idxs_test = np.arange(len(test_dataset))
+
+    # # labels = dataset.train_labels.numpy()
+    # labels = np.array(dataset.targets)
+    # labels_test = np.array(test_dataset.targets)
+
+    # # sort labels
+    # idxs_labels = np.vstack((idxs, labels))
+    # idxs_labels = idxs_labels[:, idxs_labels[1, :].argsort()]
+    # idxs = idxs_labels[0, :]
+
+    # idxs_labels_test = np.vstack((idxs_test, labels_test))
+    # idxs_labels_test = idxs_labels_test[:, idxs_labels_test[1, :].argsort()]
+    # idxs_test = idxs_labels_test[0, :]
+    # # divide and assign
+    # for i in range(args.num_users):
+    #     rand_set = set(np.random.choice(idx_shard, args.num_shards, replace=False))  # 从0,1,2.....19 shard的标号中随机抽取两个
+    #     idx_shard = list(set(idx_shard) - rand_set)
+    #     for rand in rand_set:
+    #         dict_users[i] = np.concatenate(
+    #             (dict_users[i], idxs[rand*num_imgs:(rand+1)*num_imgs]), axis=0)
+
+    #         dict_users_test[i] = np.concatenate(  # 按照同样的方式分配test data
+    #             (dict_users_test[i], idxs_test[rand*num_imgs_test:(rand+1)*num_imgs_test]), axis=0)
+
+
+    # 狄利克雷分布来划分数据集
+    y_train = np.array(dataset.targets)
+    y_test = np.array(test_dataset.targets)
+    label_distribution = np.random.dirichlet([args.beta]*args.num_users, args.num_classes)
+    # (K, N)的类别标签分布矩阵X，记录每个client占有每个类别的多少
+    class_idcs = [np.argwhere(y_train==y).flatten()    for y in range(args.num_classes)]
+    class_idcs_test = [np.argwhere(y_test==y).flatten()    for y in range(args.num_classes)]
+    # 记录每个K个类别对应的样本下标
     dict_users = {i: np.array([], dtype=int) for i in range(args.num_users)}
     dict_users_test = {i: np.array([], dtype=int) for i in range(args.num_users)}
-    idxs = np.arange(len(dataset))
-    idxs_test = np.arange(len(test_dataset))
+    client_idcs = [[] for _ in range(args.num_users)]
+    client_idcs_test = [[] for _ in range(args.num_users)]
+    # 记录N个client分别对应样本集合的索引
+    for c, fracs in zip(class_idcs, label_distribution):
+        # np.split按照比例将类别为k的样本划分为了N个子集
+        # for i, idcs 为遍历第i个client对应样本集合的索引
+        for i, idcs in enumerate(np.split(c, (np.cumsum(fracs)[:-1]*len(c)).astype(int))):
+            client_idcs[i] += [idcs]
+        
+    for c, fracs in zip(class_idcs_test, label_distribution):
+        # np.split按照比例将类别为k的样本划分为了N个子集
+        # for i, idcs 为遍历第i个client对应样本集合的索引
+        for i, idcs in enumerate(np.split(c, (np.cumsum(fracs)[:-1]*len(c)).astype(int))):
+            client_idcs_test[i] += [idcs]
+        
 
-    # labels = dataset.train_labels.numpy()
-    labels = np.array(dataset.targets)
-    labels_test = np.array(test_dataset.targets)
+    client_idcs = [np.concatenate(idcs) for idcs in client_idcs]
+    client_idcs_test = [np.concatenate(idcs) for idcs in client_idcs_test]
 
-    # sort labels
-    idxs_labels = np.vstack((idxs, labels))
-    idxs_labels = idxs_labels[:, idxs_labels[1, :].argsort()]
-    idxs = idxs_labels[0, :]
-
-    idxs_labels_test = np.vstack((idxs_test, labels_test))
-    idxs_labels_test = idxs_labels_test[:, idxs_labels_test[1, :].argsort()]
-    idxs_test = idxs_labels_test[0, :]
-
-    # divide and assign
+    # 统计各client上每个类别的数据的数量        
     for i in range(args.num_users):
-        rand_set = set(np.random.choice(idx_shard, args.num_shards, replace=False))  # 从0,1,2.....19 shard的标号中随机抽取两个
-        idx_shard = list(set(idx_shard) - rand_set)
-        for rand in rand_set:
-            dict_users[i] = np.concatenate(
-                (dict_users[i], idxs[rand*num_imgs:(rand+1)*num_imgs]), axis=0)
-
-            dict_users_test[i] = np.concatenate(  # 按照同样的方式分配test data
-                (dict_users_test[i], idxs_test[rand*num_imgs_test:(rand+1)*num_imgs_test]), axis=0)
-            
-    return dict_users, dict_users_test 
+        dict_users[i] = client_idcs[i]
+        dict_users_test[i] = client_idcs_test[i]
+        num_per_classes = [0 for k in range(args.num_classes)]
+        num_per_classes_test = [0 for k in range(args.num_classes)]
+        num_total = 0
+        num_total_test = 0
+        print(f'client[{i}]\'s num_per_classes:')
+        for j in range(len(dict_users[i])):
+            label = dataset.targets[dict_users[i][j]]
+            num_per_classes[label] += 1
+            num_total += 1
+        print(num_per_classes)
+        print('total = {}'.format(num_total))
+        print(f'client[{i}]\'s num_per_classes_test:')
+        for j in range(len(dict_users_test[i])):
+            label = test_dataset.targets[dict_users_test[i][j]]
+            num_per_classes_test[label] += 1
+            num_total_test += 1
+        print(num_per_classes_test)
+        print('total = {}'.format(num_total_test))
+    
+    return dict_users, dict_users_test
 
 
 if __name__ == '__main__':

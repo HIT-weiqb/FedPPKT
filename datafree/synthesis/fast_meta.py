@@ -93,6 +93,12 @@ class FastMetaSynthesizer(BaseSynthesis):
     def update_student(self, w):
         self.student.load_state_dict(w)
 
+    def update_generator(self, w):
+        self.generator.load_state_dict(w)
+
+    def generator_state_dict(self):
+        return self.generator.state_dict()
+    
     def synthesize(self, targets=None):
 
         start = time.time()
@@ -106,7 +112,7 @@ class FastMetaSynthesizer(BaseSynthesis):
             reset_l0(self.generator)
         
         best_inputs = None
-        # randomly create z
+        # randomly create z  (batchsize, 256) 即每个样本的特征是256维
         z = torch.randn(size=(self.synthesis_batch_size, self.nz), device=self.device).requires_grad_() 
         if targets is None:  # randomly create groung truth
             targets = torch.randint(low=0, high=self.num_classes, size=(self.synthesis_batch_size,))
