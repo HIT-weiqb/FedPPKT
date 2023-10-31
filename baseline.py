@@ -32,8 +32,8 @@ if __name__ == '__main__':
     cudnn.deterministic = True
 
     # set device
-    if args.gpu_id>=0:
-        torch.cuda.set_device(args.gpu_id)
+    if args.gpu>=0:
+        torch.cuda.set_device(args.gpu)
     device = 'cuda' if args.gpu is not None else 'cpu'
 
     ############################################
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     train_dataset, test_dataset, user_groups, user_groups_test = get_dataset(args)
 
     # 加载预先划分好的数据分布
-    pretraineds = torch.load('pretraineds/VGG_%s_%s_iid[%d].pth.tar'%(args.dataset, args.pretrained_epochs, args.iid))
+    pretraineds = torch.load('pretraineds/VGG_%s_%s_iid[%d]_user[%d].pth.tar'%(args.dataset, args.pretrained_epochs, args.iid, args.num_users))
     user_groups = pretraineds['user_groups']
     user_groups_test = pretraineds['user_groups_test']
     # list_test_acc = pretraineds['test_accuracy_global'] 
@@ -113,7 +113,7 @@ if __name__ == '__main__':
     plt.plot(range(len(test_acc_list)), test_acc_list, color='r')
     plt.ylabel('Global Model Test Acc')
     plt.xlabel('Communication Rounds')
-    plt.savefig(os.path.join('figure/[Baseline]Global_[%s]_TestAcc_%s_iid[%d].png'%(args.alg, args.dataset, args.iid)) )
+    plt.savefig(os.path.join('figure/[Baseline]Global_[%s]_TestAcc_%s_iid[%d]_user[%d].png'%(args.alg, args.dataset, args.iid, args.num_users)) )
 
     print(test_acc_list)
     print('\n Total Run Time: {0:0.4f}'.format(time.time()-start_time))

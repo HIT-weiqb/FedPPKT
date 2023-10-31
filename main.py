@@ -45,8 +45,9 @@ if __name__ == '__main__':
     # set args
     args = args_parser()
     exp_details(args)
-    if args.num_users == 50:
-        MODEL_NAMES = MODEL_NAMES * 5
+    if args.num_users % 10 == 0:
+        div = (int)(args.num_users / 10)
+        MODEL_NAMES = MODEL_NAMES * div
     print(MODEL_NAMES)
 
     # set random seed
@@ -275,11 +276,11 @@ if __name__ == '__main__':
                     'global_loss': loss_global,
                     'global_model': global_model.state_dict()
                 }
-            model_path = os.path.join('results/Global_[%s]_VGG_%s_%s_iid[%d].pth.tar'%(args.alg, args.dataset, args.pretrained_epochs, args.iid))    
+            model_path = os.path.join('results/Global_[%s]_VGG_%s_%s_iid[%d]_user[%d].pth.tar'%(args.alg, args.dataset, args.pretrained_epochs, args.iid, args.num_users))    
             torch.save(checkpoint, model_path)
             if acc_global >= max_acc_global:
                 max_acc_global = copy.deepcopy(acc_global)
-                result_path3 = os.path.join('results/Best_Global_[%s]_VGG_%s_[%s]_iid[%d].pth.tar'%(args.alg, args.dataset, args.pretrained_epochs, args.iid)) 
+                result_path3 = os.path.join('results/Best_Global_[%s]_VGG_%s_[%s]_iid[%d]_user[%d].pth.tar'%(args.alg, args.dataset, args.pretrained_epochs, args.iid, args.num_users)) 
                 torch.save(checkpoint, result_path3)
             # draw curve
             if (epoch+1) % 5 == 0: # 每5个comm round 重新画一遍
@@ -289,14 +290,14 @@ if __name__ == '__main__':
                 plt.plot(range(len(global_test_acc)), global_test_acc, color='r')
                 plt.ylabel('Global Model Test Acc')
                 plt.xlabel('Communication Rounds')
-                plt.savefig(os.path.join('figure/Global_[%s]_TestAcc_%s_iid[%d].png'%(args.alg, args.dataset, args.iid)) )
+                plt.savefig(os.path.join('figure/Global_[%s]_TestAcc_%s_iid[%d]_user[%d].png'%(args.alg, args.dataset, args.iid, args.num_users)) )
                 # Plot Global Test Loss Curve
                 plt.figure()
                 plt.title('Global Model Test Loss vs Communication rounds')
                 plt.plot(range(len(global_test_loss)), global_test_loss, color='b')
                 plt.ylabel('Global Model Test Loss')
                 plt.xlabel('Communication Rounds')
-                plt.savefig(os.path.join('figure/Global_[%s]_TestLoss_%s_iid[%d].png'%(args.alg, args.dataset, args.iid)) )
+                plt.savefig(os.path.join('figure/Global_[%s]_TestLoss_%s_iid[%d]_user[%d].png'%(args.alg, args.dataset, args.iid, args.num_users)))
 
                 # # Plot Local Vaild Acc Curve
                 # for idx in range(args.num_users):
