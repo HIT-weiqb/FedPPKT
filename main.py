@@ -45,10 +45,6 @@ if __name__ == '__main__':
     # set args
     args = args_parser()
     exp_details(args)
-    if args.num_users % 10 == 0:
-        div = (int)(args.num_users / 10)
-        MODEL_NAMES = MODEL_NAMES * div
-    print(MODEL_NAMES)
 
     # set random seed
     random.seed(args.seed)
@@ -91,7 +87,7 @@ if __name__ == '__main__':
 
     # pretrained
     if args.pretrained == 1:  # 预训练好了，加载数据集的划分、准确率、模型参数
-        pretraineds = torch.load('pretraineds/VGG_%s_%s_iid[%d]_user[%d].pth.tar'%(args.dataset, args.pretrained_epochs, args.iid, args.num_users))
+        pretraineds = torch.load('pretraineds/VGG_%s_%s_iid[%d]_user[%d].pth.tar'%(args.dataset, args.pretrained_epochs, args.iid, args.num_users), map_location='cuda')
         user_groups = pretraineds['user_groups']
         user_groups_test = pretraineds['user_groups_test']
         list_test_acc = pretraineds['test_accuracy_global'] 
@@ -256,9 +252,28 @@ if __name__ == '__main__':
         global_model.load_state_dict(global_weights)
 
         # 新增 update global generator weights
-        # global_generator_weights = average_weights(local_generator_weights)
-        # for i in range(args.num_users):
-        #     synthesizer[i].update_generator(global_generator_weights)
+        global_generator_weights = average_weights(local_generator_weights)
+
+        # 在这加server端，对合成器的蒸馏
+        if epoch >= args.warmup:
+            logger.info('Start server training global Generator with global model')
+            Sgenerator = Generator(nz=args.nz, ngf=64, img_size=32, nc=3)
+            Ssynthesizer = datafree.synthesis.FastMetaSynthesizer(copy.deepcopy(global_model), None, Sgenerator,args=args,   # 全局模型作为teacher model
+                        img_size=(3, 32, 32), transform=train_dataset.transform, normalizer=normalizer, idx=-1)
+            Ssynthesizer.update_generator(global_generator_weights)  # 训练全局合成器
+            genWeight = None
+            for i in range(args.Sepoch):
+                genWeight, LOSS = Ssynthesizer.refineMetaGenerator()
+                if((i+1)%10 == 0):
+                    logger.info('| Server Training Generaotr Stage | Communication Round : {} | Server Training Round : {} |  Training Loss : {} |'.format(
+                            epoch+1, i+1, LOSS))
+
+            # 下发给各client局部的元合成器
+            for i in range(args.num_users):
+                synthesizer[i].update_generator(genWeight)
+                # synthesizer[i].update_generator(global_generator_weights)
+
+
 
         # 每个comm后会测试global model的acc
         if epoch >= args.warmup:  # 每过1个epoch, 测试global model在整个dataset上的性能
@@ -276,11 +291,11 @@ if __name__ == '__main__':
                     'global_loss': loss_global,
                     'global_model': global_model.state_dict()
                 }
-            model_path = os.path.join('results/Global_[%s]_VGG_%s_%s_iid[%d]_user[%d].pth.tar'%(args.alg, args.dataset, args.pretrained_epochs, args.iid, args.num_users))    
+            model_path = os.path.join('results/Global_[%s]_VGG_%s_%s_iid[%d]_epoch[%d].pth.tar'%(args.alg, args.dataset, args.pretrained_epochs, args.iid, args.Sepoch))    
             torch.save(checkpoint, model_path)
             if acc_global >= max_acc_global:
                 max_acc_global = copy.deepcopy(acc_global)
-                result_path3 = os.path.join('results/Best_Global_[%s]_VGG_%s_[%s]_iid[%d]_user[%d].pth.tar'%(args.alg, args.dataset, args.pretrained_epochs, args.iid, args.num_users)) 
+                result_path3 = os.path.join('results/Best_Global_[%s]_VGG_%s_[%s]_iid[%d]_epoch[%d].pth.tar'%(args.alg, args.dataset, args.pretrained_epochs, args.iid, args.Sepoch)) 
                 torch.save(checkpoint, result_path3)
             # draw curve
             if (epoch+1) % 5 == 0: # 每5个comm round 重新画一遍
@@ -290,14 +305,14 @@ if __name__ == '__main__':
                 plt.plot(range(len(global_test_acc)), global_test_acc, color='r')
                 plt.ylabel('Global Model Test Acc')
                 plt.xlabel('Communication Rounds')
-                plt.savefig(os.path.join('figure/Global_[%s]_TestAcc_%s_iid[%d]_user[%d].png'%(args.alg, args.dataset, args.iid, args.num_users)) )
+                plt.savefig(os.path.join('figure/Global_[%s]_TestAcc_%s_iid[%d]_epoch[%d].png'%(args.alg, args.dataset, args.iid, args.Sepoch)) )
                 # Plot Global Test Loss Curve
                 plt.figure()
                 plt.title('Global Model Test Loss vs Communication rounds')
                 plt.plot(range(len(global_test_loss)), global_test_loss, color='b')
                 plt.ylabel('Global Model Test Loss')
                 plt.xlabel('Communication Rounds')
-                plt.savefig(os.path.join('figure/Global_[%s]_TestLoss_%s_iid[%d]_user[%d].png'%(args.alg, args.dataset, args.iid, args.num_users)))
+                plt.savefig(os.path.join('figure/Global_[%s]_TestLoss_%s_iid[%d]_epoch[%d].png'%(args.alg, args.dataset, args.iid, args.Sepoch)))
 
                 # # Plot Local Vaild Acc Curve
                 # for idx in range(args.num_users):

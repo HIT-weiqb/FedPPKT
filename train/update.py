@@ -211,9 +211,7 @@ class FastDateFree(object):
     def distillation(self, student, synthesizer, teacher, global_round, client, logger):
         # path_project = '/home/aiia611/wqb/data'  #   /data_b/wqb/src/data
         MODEL_NAMES = ["VGG8", "VGG8", "VGG11", "VGG11", "VGG13", "VGG13", "VGG16", "VGG16", "VGG19", "VGG19"]
-        if self.args.num_users % 10 == 0:
-            div = (int)(self.args.num_users / 10)
-            MODEL_NAMES = MODEL_NAMES * div
+        
         # distill optimizer
         optimizer = torch.optim.SGD(student.parameters(), self.args.lr, weight_decay=self.args.weight_decay,
                                 momentum=0.9)

@@ -9,7 +9,7 @@ def args_parser():
     parser = argparse.ArgumentParser()
 
     # pretrained stage parameters
-    parser.add_argument('--pretrained', type=int, default=1, help="whether pretrained or not")
+    parser.add_argument('--pretrained', type=int, default=0, help="whether pretrained or not")
     parser.add_argument('--pretrained_epochs', type=int, default=200,
                         help="number of rounds of training")
     parser.add_argument('--pretrained_lr', type=float, default=0.05,
@@ -59,7 +59,7 @@ def args_parser():
     parser.add_argument('--num_shards', type=int, default=5, help="number of each clients' shard")
 
 
-    parser.add_argument('--iid', type=int, default=1,  
+    parser.add_argument('--iid', type=int, default=0,  
                         help='Default set to IID. Set to 0 for non-IID.')
     parser.add_argument('--unequal', type=int, default=0,
                         help='whether to use unequal data splits for  \
@@ -74,7 +74,7 @@ def args_parser():
                         help='the fraction of clients: C')
     parser.add_argument('--comm_rounds', type=int, default=50,  
                         help="number of rounds of training")
-    parser.add_argument('--seed', type=int, default=7, metavar='S',
+    parser.add_argument('--seed', type=int, default=3, metavar='S',
                         help='random seed (default: 3)')
     parser.add_argument('--adv', default=1.1, type=float, help='scaling factor for adversarial distillation')
     parser.add_argument('--bn', default=10.0, type=float, help='scaling factor for BN regularization')
@@ -117,7 +117,11 @@ def args_parser():
                     dest='weight_decay')
     parser.add_argument('-p', '--print_freq', default=0, type=int,
                     metavar='N', help='print frequency (default: 10)')
-
+    # server train generator
+    parser.add_argument('--Sg_steps', default=10, type=int, metavar='N',
+                        help='number of iterations for generation')
+    parser.add_argument('--Soh', default=1.1, type=float, help='scaling factor for one hot loss (cross entropy)')
+    parser.add_argument('--Sepoch', type=int, default=50, help="number of server training epoch")
      # Baseline
     parser.add_argument('--local_ep', type=int, default=10,
                         help="the number of local epochs: E")

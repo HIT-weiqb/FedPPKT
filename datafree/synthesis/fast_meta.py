@@ -193,3 +193,76 @@ class FastMetaSynthesizer(BaseSynthesis):
         
     def sample(self):
         return self.data_iter.next()
+    
+    def refineMetaGenerator(self, targets=None):
+
+
+        self.ep+=1
+        # self.student.eval()
+        self.teacher.eval()
+        best_cost = 1e6
+
+        
+        best_inputs = None
+        # randomly create z  (batchsize, 256) 即每个样本的特征是256维
+        z = torch.randn(size=(self.synthesis_batch_size, self.nz), device=self.device).requires_grad_() 
+        if targets is None:  # randomly create groung truth
+            targets = torch.randint(low=0, high=self.num_classes, size=(self.synthesis_batch_size,))
+        else:
+            targets = targets.sort()[0] # sort for better visualization
+        targets = targets.to(self.device)
+
+        fast_generator = self.generator.clone()  # self.generator 就是 元生成器， fast_generator 是 内部循环时用到的临时生成器
+
+        optimizer = torch.optim.Adam([  # 同时对z和fast generator的参数进行优化
+            {'params': fast_generator.parameters()},
+            {'params': [z], 'lr': self.lr_z}
+        ], lr=self.lr_g, betas=[0.5, 0.999])
+        LOSS = 0.0
+        for it in range(self.args.Sg_steps):  # synthesize data
+            inputs = fast_generator(z)
+            inputs_aug = self.aug(inputs) # crop and normalize
+            if it == 0:
+                originalMeta = inputs  # record initial z
+            
+            #############################################
+            # Inversion Loss
+            #############################################
+            t_out = self.teacher(inputs_aug)
+            if targets is None:
+                targets = torch.argmax(t_out, dim=-1)
+                targets = targets.to(self.device)
+
+            loss_bn = sum([h.r_feature for h in self.hooks])
+            loss_oh = F.cross_entropy( t_out, targets )
+            loss = self.bn * loss_bn + self.args.Soh * loss_oh  # total loss
+            LOSS += loss
+            with torch.no_grad():
+                if best_cost > loss.item() or best_inputs is None:
+                    best_cost = loss.item()     
+                    best_inputs = inputs.data  # only reserve the best input
+
+            optimizer.zero_grad()
+            loss.backward()
+
+            if self.ismaml:  # meta-learn the generator
+                if it==0: self.meta_optimizer.zero_grad()
+                fomaml_grad(self.generator, fast_generator)
+                if it == (self.args.Sg_steps-1): self.meta_optimizer.step()
+
+            optimizer.step()  # 更新z以及fast optimizer
+
+        if self.bn_mmt != 0:
+            for h in self.hooks:
+                h.update_mmt()
+
+        # REPTILE meta gradient
+        if not self.ismaml:
+            self.meta_optimizer.zero_grad()
+            reptile_grad(self.generator, fast_generator)
+            self.meta_optimizer.step()
+
+        self.prev_z = (z, targets)
+
+        return self.generator.state_dict(), LOSS
+        # return {"synthetic": best_inputs}, {"meta": originalMeta}  # get original meta points for tSNE vis
