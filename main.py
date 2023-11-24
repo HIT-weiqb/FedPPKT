@@ -49,7 +49,7 @@ if __name__ == '__main__':
     # set random seed
     random.seed(args.seed)
     torch.manual_seed(args.seed)
-    cudnn.deterministic = True
+    cudnn.deterministic = True  
 
     # set device
     if args.gpu>=0:
