@@ -194,7 +194,7 @@ class FastMetaSynthesizer(BaseSynthesis):
     def sample(self):
         return self.data_iter.next()
     
-    def refineMetaGenerator(self, targets=None):
+    def refineMetaGenerator(self, localWeights, targets=None):
 
 
         self.ep+=1
@@ -228,22 +228,34 @@ class FastMetaSynthesizer(BaseSynthesis):
             #############################################
             # Inversion Loss
             #############################################
-            t_out = self.teacher(inputs_aug)
-            if targets is None:
-                targets = torch.argmax(t_out, dim=-1)
-                targets = targets.to(self.device)
+            # t_out = self.teacher(inputs_aug)
 
-            loss_bn = sum([h.r_feature for h in self.hooks])
-            loss_oh = F.cross_entropy( t_out, targets )
-            loss = self.bn * loss_bn + self.args.Soh * loss_oh  # total loss
-            LOSS += loss
-            with torch.no_grad():
-                if best_cost > loss.item() or best_inputs is None:
-                    best_cost = loss.item()     
-                    best_inputs = inputs.data  # only reserve the best input
 
-            optimizer.zero_grad()
-            loss.backward()
+            # loss_bn = sum([h.r_feature for h in self.hooks])
+            # loss_oh = F.cross_entropy( t_out, targets )
+            loss_oh = 0.
+            loss_bn = 0.
+            # local model inference
+            with torch.autograd.set_detect_anomaly(True):
+                for idx in range(self.args.num_users):
+                    self.teacher.load_state_dict(localWeights[idx])
+                    self.teacher.eval()
+                    t_out = self.teacher(inputs_aug)
+                    tmpLossOH = torch.mean( F.cross_entropy( t_out, targets ) )
+                    loss_oh = loss_oh + tmpLossOH
+                    tmpLossBN = sum([h.r_feature for h in self.hooks])
+                    loss_bn = loss_bn + tmpLossBN
+                loss_oh = loss_oh / self.args.num_users
+                loss_bn = loss_bn / self.args.num_users
+                loss = self.bn * loss_bn + self.args.Soh * loss_oh  # total loss
+                LOSS += loss
+                with torch.no_grad():
+                    if best_cost > loss.item() or best_inputs is None:
+                        best_cost = loss.item()     
+                        best_inputs = inputs.data  # only reserve the best input
+
+                optimizer.zero_grad()
+                loss.backward()
 
             if self.ismaml:  # meta-learn the generator
                 if it==0: self.meta_optimizer.zero_grad()

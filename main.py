@@ -263,7 +263,7 @@ if __name__ == '__main__':
             Ssynthesizer.update_generator(global_generator_weights)  # 训练全局合成器
             genWeight = None
             for i in range(args.Sepoch):
-                genWeight, LOSS = Ssynthesizer.refineMetaGenerator()
+                genWeight, LOSS = Ssynthesizer.refineMetaGenerator(local_weights)
                 if((i+1)%10 == 0):
                     logger.info('| Server Training Generaotr Stage | Communication Round : {} | Server Training Round : {} |  Training Loss : {} |'.format(
                             epoch+1, i+1, LOSS))
