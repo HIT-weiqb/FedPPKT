@@ -145,7 +145,7 @@ def mnist_noniid_unequal(dataset, num_users):
 
 def cifar_iid(dataset, test_dataset, args):
     """
-    Sample I.I.D. client data from CIFAR10 dataset
+    Sample I.I.D. client data from CIFAR10/CIFAR100 dataset
     :param dataset:
     :param num_users:
     :return: dict of image index
@@ -166,7 +166,7 @@ def cifar_iid(dataset, test_dataset, args):
 
 def cifar_noniid(dataset, test_dataset, args):
     """
-    Sample non-I.I.D client data from CIFAR10 dataset
+    Sample non-I.I.D client data from CIFAR10/CIFAR100 dataset
     :param dataset:
     :param num_users:
     :return:

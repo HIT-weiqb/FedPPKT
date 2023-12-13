@@ -46,7 +46,37 @@ def get_dataset(args):
             else:
                 # Chose euqal splits for every user
                 user_groups, user_groups_test = cifar_noniid(train_dataset, test_dataset, args)
+    elif args.dataset == 'cifar100':
+        data_dir = '{}/cifar100/'.format(args.data_root)  #  ../data/cifar100/'
+        train_transform = transforms.Compose(
+            [
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225) )])
+        val_transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225) )])
+        
+        train_dataset = datasets.CIFAR100(data_dir, train=True, download=True,
+                                       transform=train_transform)
 
+        test_dataset = datasets.CIFAR100(data_dir, train=False, download=True,
+                                      transform=val_transform)
+
+        # sample training data amongst users
+        if args.iid:
+            # Sample IID user data from Mnist
+            user_groups, user_groups_test = cifar_iid(train_dataset, test_dataset, args)
+        else:
+            # Sample Non-IID user data from Mnist
+            if args.unequal:
+                # Chose uneuqal splits for every user
+                raise NotImplementedError()
+            else:
+                # Chose euqal splits for every user
+                user_groups, user_groups_test = cifar_noniid(train_dataset, test_dataset, args)
     elif args.dataset == 'mnist' or 'fmnist':
         if args.dataset == 'mnist':
             data_dir = '../data/mnist/'

@@ -70,7 +70,6 @@ if __name__ == '__main__':
 
 
     # load dataset and user groups     数据集的获取以及划分
-    # 这里要改一下，如果是预训练好的，就要加载一下之前保存的user_groups
     train_dataset, test_dataset, user_groups, user_groups_test = get_dataset(args)
 
 
@@ -254,6 +253,10 @@ if __name__ == '__main__':
         # 新增 update global generator weights
         global_generator_weights = average_weights(local_generator_weights)
 
+        # 下发给各client局部的元合成器
+        # for i in range(args.num_users):
+        #     synthesizer[i].update_generator(global_generator_weights)
+
         # 在这加server端，对合成器的蒸馏
         if epoch >= args.warmup:
             logger.info('Start server training global Generator with global model')
@@ -263,14 +266,14 @@ if __name__ == '__main__':
             Ssynthesizer.update_generator(global_generator_weights)  # 训练全局合成器
             genWeight = None
             for i in range(args.Sepoch):
-                genWeight, LOSS = Ssynthesizer.refineMetaGenerator(local_weights)
+                genWeight, LOSS = Ssynthesizer.refineMetaGenerator(local_weights, copy.deepcopy(global_model))
                 if((i+1)%10 == 0):
                     logger.info('| Server Training Generaotr Stage | Communication Round : {} | Server Training Round : {} |  Training Loss : {} |'.format(
                             epoch+1, i+1, LOSS))
 
             # 下发给各client局部的元合成器
             for i in range(args.num_users):
-                synthesizer[i].update_generator(genWeight)
+                    synthesizer[i].update_generator(genWeight)
                 # synthesizer[i].update_generator(global_generator_weights)
 
 
