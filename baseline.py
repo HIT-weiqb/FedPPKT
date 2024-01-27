@@ -50,9 +50,9 @@ if __name__ == '__main__':
     pretraineds = torch.load('pretraineds/VGG_%s_%s_iid[%d]_user[%d].pth.tar'%(args.dataset, args.pretrained_epochs, args.iid, args.num_users))
     user_groups = pretraineds['user_groups']
     user_groups_test = pretraineds['user_groups_test']
-    # list_test_acc = pretraineds['test_accuracy_global'] 
-    # list_test_loss = pretraineds['test_loss_global']
-    # list_vaild_acc = pretraineds['valid_accuracy_local']
+    list_test_acc = pretraineds['test_accuracy_global'] 
+    list_test_loss = pretraineds['test_loss_global']
+    list_vaild_acc = pretraineds['valid_accuracy_local']
     # 统计各client上每个类别的数据的数量        
     # for i in range(args.num_users):
     #     num_per_classes = [0 for k in range(args.num_classes)]
@@ -107,6 +107,7 @@ if __name__ == '__main__':
         logger.info('[Test] FedAvg  Round={round} Acc={acc:.2f} Loss={loss:.2f}'.format(
             round=epoch+1, acc=test_acc, loss=test_loss))
         test_acc_list.append(test_acc)
+        print(test_acc_list)
 
     plt.figure()
     plt.title('[Baseline] Global Model Test Acc vs Communication rounds')

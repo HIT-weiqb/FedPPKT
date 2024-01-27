@@ -12,10 +12,10 @@ def args_parser():
     parser.add_argument('--pretrained', type=int, default=0, help="whether pretrained or not")
     parser.add_argument('--pretrained_epochs', type=int, default=200,
                         help="number of rounds of training")
-    parser.add_argument('--pretrained_lr', type=float, default=0.05,
+    parser.add_argument('--pretrained_lr', type=float, default=0.02,
                         help='learning rate')  # 0.01  batch size=10
     parser.add_argument('--pretrained_bs', type=int, default=32, help="batch size of pretraining")
-    parser.add_argument('--pretrained_momentum', type=float, default=0.9,  
+    parser.add_argument('--pretrained_momentum', type=float, default=0.7,  
                         help='SGD momentum (default: 0.9)')  # 0.5 
     parser.add_argument('--pretrained_optimizer', type=str, default='sgd', help="type \
                     of optimizer")
@@ -56,7 +56,7 @@ def args_parser():
 
     parser.add_argument('--num_classes', type=int, default=10, help="number \
                         of classes")
-    parser.add_argument('--num_shards', type=int, default=5, help="number of each clients' shard")
+    parser.add_argument('--img_size', type=int, default=32, help="image size")
 
 
     parser.add_argument('--iid', type=int, default=0,  
@@ -98,7 +98,7 @@ def args_parser():
                     help='number of iterations for KD after generation')
     parser.add_argument('--ep_steps', default=200, type=int, metavar='N',  # 到底是200还是400？
                         help='number of total iterations in each epoch')
-    parser.add_argument('--warmup', default=3, type=int, metavar='N',  # 
+    parser.add_argument('--warmup', default=1, type=int, metavar='N',  # 
                         help='which epoch to start kd')
     parser.add_argument('--batch_size', default=256, type=int,
                     metavar='N',

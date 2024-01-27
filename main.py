@@ -199,8 +199,10 @@ if __name__ == '__main__':
     global_model.train()
     print(global_model)
     # initialize normalizer
-    normalizer = datafree.utils.Normalizer(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
-    
+    if args.num_channels == 3:
+        normalizer = datafree.utils.Normalizer(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
+    else:
+        normalizer = datafree.utils.Normalizer(mean=(0.1307,), std=(0.3081,))
     ############################################
     # Setup the data-free synthesizer
     ############################################
@@ -210,10 +212,10 @@ if __name__ == '__main__':
     generator = {}
     synthesizer = {}
     for i in range(args.num_users):
-        generator[i] = Generator(nz=args.nz, ngf=64, img_size=32, nc=3)
+        generator[i] = Generator(nz=args.nz, ngf=64, img_size=args.img_size, nc=args.num_channels)
         generator[i].to(device)
         synthesizer[i] = datafree.synthesis.FastMetaSynthesizer(Pretrained_Models[i], copy.deepcopy(global_model), generator[i],args=args, 
-                    img_size=(3, 32, 32), transform=train_dataset.transform, normalizer=normalizer, idx=i)
+                    img_size=(args.num_channels, args.img_size, args.img_size), transform=train_dataset.transform, normalizer=normalizer, idx=i)
     # copy weights 存储全局模型的参数
     global_weights = global_model.state_dict()
 
@@ -227,6 +229,7 @@ if __name__ == '__main__':
     max_acc_global_sum = []
     max_loss_global_sum = []
     local_valid_acc = {}
+    acc_list = []
     for i in range(args.num_users):
         local_valid_acc[i] = []
     for epoch in tqdm(range(args.comm_rounds)):  # 通讯轮数 50
@@ -260,9 +263,9 @@ if __name__ == '__main__':
         # 在这加server端，对合成器的蒸馏
         if epoch >= args.warmup:
             logger.info('Start server training global Generator with global model')
-            Sgenerator = Generator(nz=args.nz, ngf=64, img_size=32, nc=3)
+            Sgenerator = Generator(nz=args.nz, ngf=64, img_size=args.img_size, nc=args.num_channels)
             Ssynthesizer = datafree.synthesis.FastMetaSynthesizer(copy.deepcopy(global_model), None, Sgenerator,args=args,   # 全局模型作为teacher model
-                        img_size=(3, 32, 32), transform=train_dataset.transform, normalizer=normalizer, idx=-1)
+                        img_size=(args.num_channels, args.img_size, args.img_size), transform=train_dataset.transform, normalizer=normalizer, idx=-1)
             Ssynthesizer.update_generator(global_generator_weights)  # 训练全局合成器
             genWeight = None
             for i in range(args.Sepoch):
@@ -274,7 +277,6 @@ if __name__ == '__main__':
             # 下发给各client局部的元合成器
             for i in range(args.num_users):
                     synthesizer[i].update_generator(genWeight)
-                # synthesizer[i].update_generator(global_generator_weights)
 
 
 
@@ -282,8 +284,9 @@ if __name__ == '__main__':
         if epoch >= args.warmup:  # 每过1个epoch, 测试global model在整个dataset上的性能
             acc_global, loss_global = 0., 0.
             acc_global, loss_global = test_inference(args, global_model, test_dataset, idxs=[i for i in range(len(test_dataset))])
-    
+            acc_list.append(acc_global)
             global_test_acc.append(acc_global)
+            logger.info(global_test_acc)
             global_test_loss.append(loss_global)
             logger.info('| Global Model Testing Stage | Communication Round : {} | Global Test Acc : {}   Test Loss : {}'.format(
                     epoch+1, acc_global, loss_global))

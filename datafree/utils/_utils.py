@@ -108,13 +108,16 @@ def save_image_batch(imgs, output, col=None, size=None, pack=True):
     else:
         output_filename = output.strip('.png')
         for idx, img in enumerate(imgs):
-            img = Image.fromarray( img.transpose(1, 2, 0) )
+            if(img.shape[0] == 3):
+                img = Image.fromarray(img.transpose(1, 2, 0))  # 这一行
+            else:
+                img = Image.fromarray(img[0])
             img.save(output_filename+'-%d.png'%(idx))
 
 def pack_images(images, col=None, channel_last=False, padding=1):
     # N, C, H, W
     if isinstance(images, (list, tuple) ):
-        images = np.stack(images, 0)
+        images = np.stack(images, 0)  # 转化为数组
     if channel_last:
         images = images.transpose(0,3,1,2) # make it channel first
     assert len(images.shape)==4
@@ -160,7 +163,10 @@ def normalize(tensor, mean, std, reverse=False):
     
     _mean = torch.as_tensor(_mean, dtype=tensor.dtype, device=tensor.device)
     _std = torch.as_tensor(_std, dtype=tensor.dtype, device=tensor.device)
-    tensor = (tensor - _mean[None, :, None, None]) / (_std[None, :, None, None])
+    if tensor.shape[1] == 3:
+        tensor = (tensor - _mean[None, :, None, None]) / (_std[None, :, None, None])
+    else:
+        tensor = (tensor - _mean[0]) / (_std[0])
     return tensor
 
 class Normalizer(object):

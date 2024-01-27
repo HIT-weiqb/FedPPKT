@@ -23,7 +23,7 @@ class VGG(nn.Module):
 
     def __init__(self, cfg, args, batch_norm=False):
         super(VGG, self).__init__()
-        self.block0 = self._make_layers(cfg[0], batch_norm, 3)
+        self.block0 = self._make_layers(cfg[0], batch_norm, args.num_channels)
         self.block1 = self._make_layers(cfg[1], batch_norm, cfg[0][-1])
         self.block2 = self._make_layers(cfg[2], batch_norm, cfg[1][-1])
         self.block3 = self._make_layers(cfg[3], batch_norm, cfg[2][-1])
